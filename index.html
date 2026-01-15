@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <main class="dashboard">
+    <header>
+      <div class="title-block">
+        <h1>HazardWatch Live Dashboard</h1>
+        <p>Live monitoring for earthquakes, floods, heat waves, landslides, temperature, and rainfall.</p>
+        <p class="small" id="timestamp">Loading live time...</p>
+      </div>
+      <div class="search-panel">
+        <input type="text" id="locationInput" placeholder="Enter a city or region" />
+        <button type="button" id="refreshButton">Refresh</button>
+      </div>
+    </header>
+
+    <section class="grid" id="metricsGrid">
+      <div class="card">
+        <h3>Temperature</h3>
+        <div class="stat" id="temperature">--</div>
+        <div class="small" id="tempMeta">--</div>
+      </div>
+      <div class="card">
+        <h3>Rainfall</h3>
+        <div class="stat" id="rainfall">--</div>
+        <div class="small" id="rainMeta">--</div>
+      </div>
+      <div class="card">
+        <h3>Heat Wave Risk</h3>
+        <span class="badge low" id="heatWave">--</span>
+        <div class="small">Based on live temperature</div>
+      </div>
+      <div class="card">
+        <h3>Flood Risk</h3>
+        <span class="badge low" id="flood">--</span>
+        <div class="small">Based on rainfall intensity</div>
+      </div>
+      <div class="card">
+        <h3>Landslide Risk</h3>
+        <span class="badge low" id="landslide">--</span>
+        <div class="small">Rainfall-driven stability</div>
+      </div>
+      <div class="card">
+        <h3>Earthquake Watch</h3>
+        <span class="badge alert" id="earthquake">--</span>
+        <div class="small" id="quakeMeta">--</div>
+      </div>
+    </section>
+
+    <p class="footer">Data sources: Open-Meteo &amp; USGS Earthquake API. Live updates on demand.</p>
+  </main>
+
+  <script>
+    const elements = {
+      temperature: document.getElementById("temperature"),
+      tempMeta: document.getElementById("tempMeta"),
+      rainfall: document.getElementById("rainfall"),
+      rainMeta: document.getElementById("rainMeta"),
+      heatWave: document.getElementById("heatWave"),
+      flood: document.getElementById("flood"),
+      landslide: document.getElementById("landslide"),
+      earthquake: document.getElementById("earthquake"),
+      quakeMeta: document.getElementById("quakeMeta"),
+      timestamp: document.getElementById("timestamp"),
+    };
+
+    const locationInput = document.getElementById("locationInput");
+    const refreshButton = document.getElementById("refreshButton");
+
+    const badgeClass = (value) => {
+      if (!value) return "badge low";
+      const normalized = value.toLowerCase();
+      if (normalized.includes("extreme")) return "badge extreme";
+      if (normalized.includes("high")) return "badge high";
+      if (normalized.includes("moderate")) return "badge moderate";
+      if (normalized.includes("alert")) return "badge alert";
+      return "badge low";
+    };
+
+    const formatLocation = (location) => {
+      if (!location) return "";
+      const country = location.country ? `, ${location.country}` : "";
+      return `${location.name}${country}`;
+    };
+
+    const updateTimestamp = (timestamp, timezone) => {
+      if (!timestamp) {
+        elements.timestamp.textContent = "Live time unavailable";
+        return;
+      }
+      const date = new Date(timestamp);
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        dateStyle: "full",
+        timeStyle: "medium",
+        timeZone: timezone || "UTC",
+      });
+      elements.timestamp.textContent = `Live time: ${formatter.format(date)}`;
+    };
+
+    const updateDashboard = (payload) => {
+      const { location, weather, summary, earthquake } = payload;
+      elements.temperature.textContent = `${summary.temperature.toFixed(1)}°C`;
+      elements.tempMeta.textContent = `Wind ${summary.wind_speed.toFixed(1)} km/h · ${formatLocation(location)}`;
+      elements.rainfall.textContent = `${summary.rainfall.toFixed(1)} mm`;
+      elements.rainMeta.textContent = `Current precipitation · ${weather.time}`;
+
+      elements.heatWave.textContent = summary.heat_wave;
+      elements.heatWave.className = badgeClass(summary.heat_wave);
+
+      elements.flood.textContent = summary.flood;
+      elements.flood.className = badgeClass(summary.flood);
+
+      elements.landslide.textContent = summary.landslide;
+      elements.landslide.className = badgeClass(summary.landslide);
+
+      elements.earthquake.textContent = summary.earthquake;
+      elements.earthquake.className = badgeClass(summary.earthquake);
+
+      if (earthquake.place) {
+        elements.quakeMeta.textContent = `${earthquake.place} · M${earthquake.magnitude}`;
+      } else {
+        elements.quakeMeta.textContent = earthquake.status;
+      }
+
+      updateTimestamp(weather.time, weather.timezone);
+    };
+
+    const fetchConditions = async () => {
+      const location = locationInput.value.trim() || "San Francisco";
+      try {
+        const response = await fetch(`/api/conditions?location=${encodeURIComponent(location)}`);
+        if (!response.ok) throw new Error("Unable to load data");
+        const data = await response.json();
+        updateDashboard(data);
+      } catch (error) {
+        elements.timestamp.textContent = "Unable to fetch live conditions. Please try again.";
+      }
+    };
+
+    refreshButton.addEventListener("click", fetchConditions);
+
+    fetchConditions();
+  </script>
+</body>
+</html>
